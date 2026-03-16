@@ -10,9 +10,9 @@ def get_dvc_hash(dvc_file_path):
         return dvc_info['outs'][0]['md5']
 
 def main():
-    # 1. Define file paths (assuming you run this from the root folder)
-    data_path = "data/raw/kc_house_data.csv"
-    dvc_path = "data/raw/kc_house_data.csv.dvc"
+    # 1. Define file paths
+    data_path = "data/raw/baseline.csv"
+    dvc_path = "data/raw/baseline.csv.dvc"
 
     # 2. Ingest the Data
     print("Loading dataset...")
