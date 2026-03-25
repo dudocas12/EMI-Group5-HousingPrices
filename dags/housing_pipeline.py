@@ -14,7 +14,7 @@ with DAG(
     'group5_housing_pipeline',
     default_args=default_args,
     description='End-to-end MLOps pipeline for King County housing prices',
-    schedule=None,  # <-- This is the Airflow 3 specific fix
+    schedule='0 3 26 3 *',  # <-- This is the Airflow 3 specific fix
     catchup=False,
     tags=['mlops', 'baseline'],
 ) as dag:
