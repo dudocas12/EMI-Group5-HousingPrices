@@ -215,3 +215,4 @@ mlruns/
 # Ignore Hydra logs and outputs
 outputs/
 multirun/
+mlflow_data/

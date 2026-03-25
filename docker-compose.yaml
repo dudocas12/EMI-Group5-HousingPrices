@@ -1,0 +1,87 @@
+version: '3.8'
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    # The Magic Login Fix from your professor:
+    - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS=True
+    - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://airflow-webserver:8080/execution/
+    - AIRFLOW__API_AUTH__JWT_SECRET=super_secret_mlops_jwt_key
+    - AIRFLOW__API__SECRET_KEY=super_secret_mlops_api_key
+    # The MLflow Bridge we built:
+    - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./conf:/opt/airflow/conf
+    - ./data:/opt/airflow/data
+    - ./.dvc:/opt/airflow/.dvc
+    - ./.git:/opt/airflow/.git
+    - ./mlflow_data:/mlflow
+  depends_on:
+    - postgres
+    - mlflow_server
+
+services:
+  postgres:
+    image: postgres:18.3-alpine3.23
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - emi-postgres_data:/var/lib/postgresql/18.3/docker
+    ports:
+      - "5432:5432"
+
+  mlflow_server:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlflow/mlflow.db
+      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+        --host 0.0.0.0
+        --allowed-hosts "*"
+
+  airflow-init:
+    <<: *airflow-common
+    command: airflow db migrate
+
+  airflow-webserver:
+    <<: *airflow-common
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    command: airflow api-server
+
+  airflow-scheduler:
+    <<: *airflow-common
+    restart: unless-stopped
+    command: airflow scheduler
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_started
+      airflow-init:
+        condition: service_completed_successfully
+    command: airflow dag-processor
+
+volumes:
+  emi-postgres_data:
