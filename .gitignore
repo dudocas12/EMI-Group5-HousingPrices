@@ -211,3 +211,7 @@ mlflow.db
 EMI-Group5-Tutorial1.rar
 # Ignore MLflow tracking directory
 mlruns/
+
+# Ignore Hydra logs and outputs
+outputs/
+multirun/
