@@ -8,12 +8,15 @@ import pandas as pd
 import joblib
 import mlflow
 import numpy as np
+import hydra
+from omegaconf import DictConfig
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-def evaluate_model():
-    # 1. Load the test data and the trained model
-    test_path = "data/processed/test.csv"
-    model_path = "models/random_forest.pkl"
+@hydra.main(config_path="../conf", config_name="config", version_base=None)
+def evaluate_model(cfg: DictConfig):
+    # Load the test data and the trained model
+    test_path = cfg.paths.test_data
+    model_path = cfg.paths.model_path
     
     print(f"Loading test data from {test_path}...")
     df_test = pd.read_csv(test_path)
@@ -23,11 +26,11 @@ def evaluate_model():
     print(f"Loading trained model from {model_path}...")
     model = joblib.load(model_path)
 
-    # 2. Generate Predictions
+    # Generate Predictions
     print("Generating predictions on unseen test data...")
     predictions = model.predict(X_test)
 
-    # 3. Calculate Performance Metrics
+    # Calculate Performance Metrics
     rmse = np.sqrt(mean_squared_error(y_test, predictions))
     mae = mean_absolute_error(y_test, predictions)
     r2 = r2_score(y_test, predictions)
@@ -37,8 +40,8 @@ def evaluate_model():
     print(f"MAE (Mean Absolute Error):      {mae:.2f}")
     print(f"R2 Score:                       {r2:.4f}\n")
 
-    # 4. Log everything to MLflow
-    mlflow.set_experiment("Housing_Prices_Baseline")
+    # Log everything to MLflow
+    mlflow.set_experiment(cfg.mlflow.experiment_name)
     
     with mlflow.start_run():
         # Log the calculated metrics

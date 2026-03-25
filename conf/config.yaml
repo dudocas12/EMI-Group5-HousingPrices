@@ -1,0 +1,21 @@
+# MLOps Pipeline Configuration - Group 5
+
+paths:
+  raw_baseline: "data/raw/baseline.csv"
+  dvc_tracker: "data/raw/baseline.csv.dvc"
+  train_data: "data/processed/train.csv"
+  test_data: "data/processed/test.csv"
+  model_dir: "models"
+  model_path: "models/random_forest.pkl"
+
+mlflow:
+  experiment_name: "Housing_Prices_Baseline"
+
+preprocessing:
+  test_size: 0.2
+  random_state: 42
+
+training:
+  n_estimators: 100
+  max_depth: 10
+  random_state: 42

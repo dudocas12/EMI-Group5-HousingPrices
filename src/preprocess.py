@@ -7,10 +7,13 @@ and testing sets for model evaluation.
 import pandas as pd
 import os
 from sklearn.model_selection import train_test_split
+import hydra
+from omegaconf import DictConfig
 
-def preprocess_data():
-    # Load the active baseline data
-    input_path = "data/raw/baseline.csv"
+@hydra.main(config_path="../conf", config_name="config", version_base=None)
+def preprocess_data(cfg: DictConfig):
+    # Load data using hydra config
+    input_path = cfg.paths.raw_baseline
     print(f"Loading raw data from {input_path}")
     df = pd.read_csv(input_path)
 
@@ -29,8 +32,7 @@ def preprocess_data():
     y = df['price']
 
     # Split into Training (80%) and Testing (20%) sets
-    # Note: We will replace 'test_size' and 'random_state' with Hydra configs in the next step
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=cfg.preprocessing.test_size, random_state=cfg.preprocessing.random_state)
 
     # Recombine to save as clean CSVs
     train_df = X_train.copy()
@@ -40,9 +42,9 @@ def preprocess_data():
     test_df['price'] = y_test
 
     # Save the processed datasets
-    os.makedirs("data/processed", exist_ok=True)
-    train_path = "data/processed/train.csv"
-    test_path = "data/processed/test.csv"
+    os.makedirs(os.path.dirname(cfg.paths.train_data), exist_ok=True)
+    train_path = cfg.paths.train_data
+    test_path = cfg.paths.test_data
     
     train_df.to_csv(train_path, index=False)
     test_df.to_csv(test_path, index=False)

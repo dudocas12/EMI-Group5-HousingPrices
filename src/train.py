@@ -8,39 +8,33 @@ import pandas as pd
 import os
 import joblib
 from sklearn.ensemble import RandomForestRegressor
+from omegaconf import DictConfig
+import hydra
 
-def train_model():
-    # 1. Load the preprocessed training data
-    train_path = "data/processed/train.csv"
-    print(f"Loading training data from {train_path}...")
-    df_train = pd.read_csv(train_path)
+@hydra.main(config_path="../conf", config_name="config", version_base=None)
+def train_model(cfg: DictConfig):
+    print(f"Loading training data from {cfg.paths.train_data}...")
+    df_train = pd.read_csv(cfg.paths.train_data)
 
     # Separate features (X) and target (y)
     X_train = df_train.drop(columns=['price'])
     y_train = df_train['price']
 
-    # 2. Initialize the Model
-    # NOTE: Hyperparameters like n_estimators and max_depth are currently hardcoded.
-    # In the next step, Hydra will inject these dynamically from config.yaml!
-    n_estimators = 100
-    max_depth = 10
-    random_state = 42
-    
-    print(f"Initializing RandomForestRegressor (Trees: {n_estimators}, Depth: {max_depth})...")
+    print(f"Initializing RandomForestRegressor (Trees: {cfg.training.n_estimators}, Depth: {cfg.training.max_depth})...")
     model = RandomForestRegressor(
-        n_estimators=n_estimators, 
-        max_depth=max_depth, 
-        random_state=random_state
+        n_estimators=cfg.training.n_estimators, 
+        max_depth=cfg.training.max_depth, 
+        random_state=cfg.training.random_state
     )
 
-    # 3. Train the Model
+    # Train the Model
     print("Training model... (This might take a few seconds)")
     model.fit(X_train, y_train)
     print("Model training complete.")
 
-    # 4. Serialize and Save the Model
-    os.makedirs("models", exist_ok=True)
-    model_path = "models/random_forest.pkl"
+    # Serialize and Save the Model
+    os.makedirs(cfg.paths.model_dir, exist_ok=True)
+    model_path = cfg.paths.model_path
     joblib.dump(model, model_path)
     
     print(f"Trained model saved successfully to {model_path}")
