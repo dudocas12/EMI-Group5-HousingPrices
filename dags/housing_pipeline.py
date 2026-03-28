@@ -11,7 +11,7 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-UPDATE_DAYS = 7
+UPDATE_DAYS = 1
 
 # The Dataset acts as the bridge
 baseline_dataset = Dataset('file:///opt/airflow/data/raw/baseline.csv')
