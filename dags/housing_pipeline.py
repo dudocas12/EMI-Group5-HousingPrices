@@ -22,20 +22,29 @@ baseline_dataset = Dataset('file:///opt/airflow/data/raw/baseline.csv')
 with DAG(
     'group5_data_stream_dag',
     default_args=default_args,
-    description='Simulates dynamic API fetches and updates the baseline',
+    description=f'Simulates API fetches every {UPDATE_DAYS} days',
     schedule=timedelta(days=UPDATE_DAYS),
     catchup=False,
     tags=['mlops', 'ingestion', 'api'],
 ) as stream_dag:
 
-    # Task: Inject Airflow's exact interval into the Python script dynamically
+    # Step 1: Fetch the new data
     fetch_api_task = BashOperator(
         task_id='fetch_mock_api',
-        # This Jinja template subtracts the start of the schedule interval from the end, getting the exact days
         bash_command=f'python src/mock_api.py --days {UPDATE_DAYS}',
         cwd='/opt/airflow',
-        outlets=[baseline_dataset] 
     )
+
+    # Step 2: Force DVC to track the new data
+    update_dvc_task = BashOperator(
+        task_id='update_dvc_hashes',
+        bash_command='dvc add data/raw/baseline.csv data/raw/future_batches.csv',
+        cwd='/opt/airflow',
+        outlets=[baseline_dataset]
+    )
+
+    # Define the order
+    fetch_api_task >> update_dvc_task
 
 # ==========================================
 # DAG 2: The Reactive ML Pipeline
