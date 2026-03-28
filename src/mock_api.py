@@ -1,35 +1,62 @@
 import pandas as pd
 import os
+import argparse
+from datetime import timedelta
 
-def fetch_new_batch(batch_size=100):
+def fetch_new_batch(update_frequency_days):
     """Simulates calling an external API to get fresh housing data."""
     future_data_path = "data/raw/future_batches.csv"
-    new_batch_path = "data/raw/new_api_data.csv"
+    baseline_path = "data/raw/baseline.csv"
+    cursor_path = "data/raw/sim_cursor.txt"
 
-    if not os.path.exists(future_data_path):
-        print("Error: The API server (future_batches.csv) is offline or missing")
+    if not os.path.exists(future_data_path) or not os.path.exists(baseline_path):
+        print("Error: Required data files are missing.")
         return
 
-    # "Connect" to the API and get the data
     df_future = pd.read_csv(future_data_path)
+    df_baseline = pd.read_csv(baseline_path)
 
     if len(df_future) == 0:
         print("The API has no more new houses")
         return
 
-    # Grab the top 100 oldest houses (chronologically)
-    df_batch = df_future.head(batch_size)
-    
-    # Remove those 100 houses from the server to not get them again
-    df_future = df_future.iloc[batch_size:]
+    df_future['date_parsed'] = pd.to_datetime(df_future['date'], format='%Y%m%dT%H%M%S', errors='coerce')
 
-    # Save the new batch locally and update the server
-    df_batch.to_csv(new_batch_path, index=False)
-    df_future.to_csv(future_data_path, index=False)
+    # Read the clock
+    if os.path.exists(cursor_path):
+        with open(cursor_path, 'r') as f:
+            last_known_date = pd.to_datetime(f.read().strip())
+    else:
+        df_baseline['date_parsed'] = pd.to_datetime(df_baseline['date'], format='%Y%m%dT%H%M%S', errors='coerce')
+        last_known_date = df_baseline['date_parsed'].max()
+        df_baseline = df_baseline.drop(columns=['date_parsed'])
 
-    print(f"API Success: Downloaded a fresh batch of {len(df_batch)} houses")
-    print(f"Saved locally to: {new_batch_path}")
-    print(f"Houses remaining on server: {len(df_future)}")
+    # Advance the clock dynamically based on Airflow's parameter
+    target_end_date = last_known_date + timedelta(days=update_frequency_days)
+
+    with open(cursor_path, 'w') as f:
+        f.write(str(target_end_date))
+
+    print(f"API Call: Fetching properties from {last_known_date.date()} to {target_end_date.date()} ({update_frequency_days} days)...")
+
+    mask = df_future['date_parsed'] <= target_end_date
+    df_batch = df_future[mask].copy()
+    df_future = df_future[~mask].copy()
+
+    if not df_batch.empty:
+        df_batch = df_batch.drop(columns=['date_parsed'])
+    df_future = df_future.drop(columns=['date_parsed'])
+
+    if len(df_batch) > 0:
+        updated_baseline = pd.concat([df_baseline, df_batch], ignore_index=True)
+        updated_baseline.to_csv(baseline_path, index=False)
+        df_future.to_csv(future_data_path, index=False)
+        print(f"Downloaded a fresh batch of {len(df_batch)} houses")
+    else:
+        print(f"No new property sales found. Clock safely advanced to {target_end_date.date()}.")
 
 if __name__ == "__main__":
-    fetch_new_batch()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--days', type=int, required=True, help="Number of days to fetch")
+    args = parser.parse_args()
+    fetch_new_batch(args.days)
