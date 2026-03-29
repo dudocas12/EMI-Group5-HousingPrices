@@ -7,6 +7,7 @@ paths:
   test_data: "data/processed/test.csv"
   model_dir: "models"
   model_path: "models/random_forest.pkl"
+  
 
 mlflow:
   experiment_name: "Housing_Prices_Baseline"

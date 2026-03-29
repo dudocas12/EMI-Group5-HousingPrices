@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.bash import BashOperator
 from airflow.datasets import Dataset
 from datetime import datetime, timedelta
 
@@ -8,7 +8,7 @@ default_args = {
     'depends_on_past': False,
     'start_date': datetime(2026, 3, 25),
     'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retry_delay': timedelta(minutes=1),
 }
 
 UPDATE_DAYS = 1
@@ -20,7 +20,7 @@ baseline_dataset = Dataset('file:///opt/airflow/data/raw/baseline.csv')
 # DAG 1: The Scheduled Data Stream
 # ==========================================
 with DAG(
-    'group5_data_stream_dag',
+    'data_stream_dag',
     default_args=default_args,
     description=f'Simulates API fetches every {UPDATE_DAYS} days',
     schedule=timedelta(days=UPDATE_DAYS),
@@ -50,7 +50,7 @@ with DAG(
 # DAG 2: The Reactive ML Pipeline
 # ==========================================
 with DAG(
-    'group5_reactive_training_dag',
+    'reactive_training_dag',
     default_args=default_args,
     description='Reacts to new baseline data: processes, trains, and evaluates',
     schedule=[baseline_dataset],  

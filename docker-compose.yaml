@@ -24,6 +24,7 @@ x-airflow-common:
     - ./.dvc:/opt/airflow/.dvc
     - ./.git:/opt/airflow/.git
     - ./mlflow_data:/mlflow
+    - ./src:/opt/airflow/src
   depends_on:
     - postgres
     - mlflow_server
