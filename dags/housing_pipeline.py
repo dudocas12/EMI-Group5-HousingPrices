@@ -2,6 +2,13 @@ from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.datasets import Dataset
 from datetime import datetime, timedelta
+import yaml
+
+# Read the shared Hydra config for pipeline-wide parameters
+with open('/opt/airflow/conf/config.yaml', 'r') as f:
+    pipeline_cfg = yaml.safe_load(f)
+
+UPDATE_DAYS = pipeline_cfg['mock_api']['update_frequency_days']
 
 default_args = {
     'owner': 'group5',
@@ -11,14 +18,10 @@ default_args = {
     'retry_delay': timedelta(minutes=1),
 }
 
-UPDATE_DAYS = 1
-
 # The Dataset acts as the bridge
 baseline_dataset = Dataset('file:///opt/airflow/data/raw/baseline.csv')
 
-# ==========================================
 # DAG 1: The Scheduled Data Stream
-# ==========================================
 with DAG(
     'data_stream_dag',
     default_args=default_args,
@@ -31,7 +34,7 @@ with DAG(
     # Step 1: Fetch the new data
     fetch_api_task = BashOperator(
         task_id='fetch_mock_api',
-        bash_command=f'python src/mock_api.py --days {UPDATE_DAYS}',
+        bash_command='python src/mock_api.py',
         cwd='/opt/airflow',
     )
 
@@ -46,9 +49,7 @@ with DAG(
     # Define the order
     fetch_api_task >> update_dvc_task
 
-# ==========================================
 # DAG 2: The Reactive ML Pipeline
-# ==========================================
 with DAG(
     'reactive_training_dag',
     default_args=default_args,

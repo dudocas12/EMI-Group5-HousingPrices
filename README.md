@@ -1,49 +1,66 @@
-# Engineering of Intelligent Models: Tutorial #2
-**Group 5** | Configuration Management and Pipeline Orchestration
+# EMI Tutorial 2 - Group 5
+## King County Housing Price Prediction — MLOps Pipeline
 
-## Project Overview
-This repository contains the Tutorial #2 submission for our MLOps pipeline, predicting King County housing prices. For this stage, we transitioned our experimental machine learning code into a modular, automated, and production-ready architecture. 
+This repository implements a fully orchestrated MLOps pipeline for predicting King County housing prices. It features automated data ingestion, preprocessing, model training, and evaluation, all managed through Apache Airflow, with configuration via Hydra and experiment tracking via MLflow.
 
-Our system completely eliminates manual execution steps and hardcoded parameters by orchestrating the workflow with Apache Airflow and managing configurations hierarchically via Hydra.
+## Project Structure
+```
+├── conf/config.yaml        # Hydra configuration (paths, hyperparameters, API settings)
+├── dags/housing_pipeline.py # Airflow DAG definitions (2 DAGs: data stream + reactive training)
+├── src/
+│   ├── mock_api.py          # Simulated external API for housing data batches
+│   ├── data_ingestion.py    # Data ingestion and validation
+│   ├── preprocess.py        # Feature selection, cleaning, and train/test split
+│   ├── train.py             # Random Forest model training
+│   └── evaluate.py          # Model evaluation and unified MLflow logging
+├── data/
+│   └── raw/                 # DVC-tracked raw datasets (baseline + future batches)
+├── docker-compose.yaml      # Full infrastructure: Airflow 3 + PostgreSQL + MLflow
+├── Dockerfile               # Custom Airflow image with ML dependencies
+└── requirements.txt         # Python dependencies
+```
 
-## Key MLOps Implementations
+## Architecture
 
-### 1. Configuration Management (Hydra)
-All hardcoded variables have been extracted from our Python scripts. We utilize Hydra to dynamically inject file paths, MLflow settings, and Random Forest hyperparameters (`n_estimators`, `max_depth`, `random_state`) via a centralized `config.yaml` file. This ensures pure separation of source code from configuration.
+The system uses a **two-DAG event-driven architecture**:
 
-### 2. Event-Driven Orchestration (Apache Airflow)
-Our workflow is orchestrated using Apache Airflow into a Directed Acyclic Graph (DAG). To build a modern, reactive system, we separated our pipeline into two distinct DAGs:
-* `data_stream_dag`: Handles data ingestion and DVC tracker updates.
-* `reactive_training_dag`: An event-driven DAG that automatically triggers the workflow (Data Ingestion → Preprocessing → Training → Evaluation) the moment a new dataset update is detected by Airflow's Dataset scheduling.
+1. **Data Stream DAG** (`data_stream_dag`) — Runs on a configurable schedule, simulates API calls to fetch new housing data, and updates the DVC-tracked baseline dataset.
+2. **Reactive Training DAG** (`reactive_training_dag`) — Automatically triggered when the baseline dataset changes. Executes the full ML pipeline: **Ingestion → Preprocessing → Training → Evaluation**, logging all metrics, hyperparameters, and data lineage (DVC MD5 hash) to MLflow.
 
-### 3. Strict Data Lineage & Experiment Tracking (DVC + MLflow)
-To maintain 100% reproducibility and adhere to stateless Airflow best practices, our final `evaluate.py` script reads the `.dvc` tracker file directly. It dynamically parses the raw text to extract the exact dataset MD5 hash. 
+## How to Run
 
-This allows us to log a single, unified experiment run in MLflow that binds together:
-* The exact dataset DVC MD5 hash (Data Lineage)
-* The model hyperparameters
-* The performance metrics (RMSE, MAE, R2)
-* The serialized `.pkl` model artifact
+### Prerequisites
+- Docker and Docker Compose installed
 
-## Repository Structure
- EMI-05_Tutorial2
- ┣ conf                 # Hydra YAML configuration files
- ┣ dags                 # Airflow DAG definitions (stream & reactive)
- ┣ data                 
- ┃ ┣ raw                # .dvc tracker files (Data pulled via DVC)
- ┃ ┗ processed          # .dvc tracker files (Data pulled via DVC)
- ┣ screenshots          # Visual evidence of DAG execution and MLflow lineage
- ┣ src                  # Modularized Python scripts
- ┃ ┣ data_ingestion.py
- ┃ ┣ preprocess.py
- ┃ ┣ train.py
- ┃ ┗ evaluate.py
- ┣ docker-compose.yaml  # Infrastructure definition (live-synced volumes)
- ┗ README.md
+### 1. Launch the Infrastructure
+```bash
+docker compose up --build -d
+```
+This starts:
+- **Airflow** (scheduler, webserver, DAG processor) at [http://localhost:8081](http://localhost:8081)
+- **MLflow Tracking Server** at [http://localhost:5000](http://localhost:5000)
+- **PostgreSQL** as Airflow's metadata database
 
-## How to Run the Pipeline
-1. **Retrieve the Dataset:** Run `dvc pull` to reconstruct the raw and processed `.csv` files from the local DVC cache.
-2. **Boot the Infrastructure:** Run `docker compose up -d` to spin up the Airflow and MLflow containers.
-3. **Trigger the Stream:** Navigate to the Airflow UI (`localhost:8081`) and manually trigger the `data_stream_dag`. 
-4. **Observe Orchestration:** Watch the `reactive_training_dag` automatically trigger in response to the dataset update.
-5. **Verify Lineage:** Navigate to the MLflow UI (`localhost:5000`) to view the consolidated `Housing_Prices_Baseline` experiment run, containing the metrics, model, and DVC hash.
+### 2. Restore Data via DVC
+```bash
+dvc checkout
+```
+
+### 3. Monitor the Pipeline
+- Open the **Airflow UI** at `http://localhost:8081` to see both DAGs
+- The Data Stream DAG runs on schedule, triggering the Reactive Training DAG automatically
+- Open the **MLflow UI** at `http://localhost:5000` to verify logged metrics, hyperparameters, model artifacts, and DVC data lineage tags
+
+### 4. Modify Configuration (Hydra)
+All pipeline parameters are centralized in `conf/config.yaml`:
+- **File paths**: raw data, processed data, model output
+- **Preprocessing**: test split ratio, random state
+- **Training**: number of estimators, max depth
+- **Mock API**: update frequency, data pool paths
+
+Changes to the config are automatically picked up on the next pipeline run.
+
+### 5. Shut Down
+```bash
+docker compose down
+```

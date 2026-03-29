@@ -1,9 +1,3 @@
-"""
-Model Training Module - Group 5
-This script loads the preprocessed training dataset and trains our core
-regression model (Random Forest) to predict King County housing prices.
-The trained model is then serialized for later evaluation and serving.
-"""
 import pandas as pd
 import os
 import joblib
@@ -28,7 +22,7 @@ def train_model(cfg: DictConfig):
     )
 
     # Train the Model
-    print("Training model... (This might take a few seconds)")
+    print("Training model...")
     model.fit(X_train, y_train)
     print("Model training complete.")
 

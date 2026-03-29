@@ -1,13 +1,16 @@
 import pandas as pd
 import os
-import argparse
 from datetime import timedelta
+import hydra
+from omegaconf import DictConfig
 
-def fetch_new_batch(update_frequency_days):
-    """Simulates calling an external API to get fresh housing data."""
-    future_data_path = "data/raw/future_batches.csv"
-    baseline_path = "data/raw/baseline.csv"
-    cursor_path = "data/raw/sim_cursor.txt"
+@hydra.main(config_path="../conf", config_name="config", version_base=None)
+def fetch_new_batch(cfg: DictConfig):
+    """Fetches the next chronological batch of housing data."""
+    future_data_path = cfg.paths.future_batches
+    baseline_path = cfg.paths.raw_baseline
+    cursor_path = cfg.paths.cursor
+    update_frequency_days = cfg.mock_api.update_frequency_days
 
     if not os.path.exists(future_data_path) or not os.path.exists(baseline_path):
         print("Error: Required data files are missing.")
@@ -17,12 +20,12 @@ def fetch_new_batch(update_frequency_days):
     df_baseline = pd.read_csv(baseline_path)
 
     if len(df_future) == 0:
-        print("The API has no more new houses")
+        print("No more data available in the simulated API pool.")
         return
 
     df_future['date_parsed'] = pd.to_datetime(df_future['date'], format='%Y%m%dT%H%M%S', errors='coerce')
 
-    # Read the clock
+    # Read the simulation clock
     if os.path.exists(cursor_path):
         with open(cursor_path, 'r') as f:
             last_known_date = pd.to_datetime(f.read().strip())
@@ -31,7 +34,7 @@ def fetch_new_batch(update_frequency_days):
         last_known_date = df_baseline['date_parsed'].max()
         df_baseline = df_baseline.drop(columns=['date_parsed'])
 
-    # Advance the clock dynamically based on Airflow's parameter
+    # Advance the clock based on configured frequency
     target_end_date = last_known_date + timedelta(days=update_frequency_days)
 
     with open(cursor_path, 'w') as f:
@@ -51,12 +54,9 @@ def fetch_new_batch(update_frequency_days):
         updated_baseline = pd.concat([df_baseline, df_batch], ignore_index=True)
         updated_baseline.to_csv(baseline_path, index=False)
         df_future.to_csv(future_data_path, index=False)
-        print(f"Downloaded a fresh batch of {len(df_batch)} houses")
+        print(f"Fetched {len(df_batch)} new records and appended to baseline.")
     else:
-        print(f"No new property sales found. Clock safely advanced to {target_end_date.date()}.")
+        print(f"No new property sales found in this window. Clock advanced to {target_end_date.date()}.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--days', type=int, required=True, help="Number of days to fetch")
-    args = parser.parse_args()
-    fetch_new_batch(args.days)
+    fetch_new_batch()

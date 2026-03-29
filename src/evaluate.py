@@ -1,11 +1,7 @@
-"""
-Model Evaluation Module - Group 5
-This script calculates performance metrics and serves as our master MLflow logger,
-bundling data lineage, hyperparameters, metrics, and the model into a single run.
-"""
 import pandas as pd
 import joblib
 import mlflow
+import yaml
 import numpy as np
 import hydra
 from omegaconf import DictConfig
@@ -40,12 +36,10 @@ def evaluate_model(cfg: DictConfig):
     print(f"MAE:  {mae:.2f}")
     print(f"R2:   {r2:.4f}\n")
 
-    # NEW STRATEGY: Read the DVC file as raw text to find the hash
-    print("Extracting DVC hash via raw text parsing...")
+    # Extract the DVC MD5 hash for strict data lineage tracking
     with open(dvc_path, 'r') as file:
-        raw_text = file.read()
-        # This splits the text at "md5:", takes the second half, and grabs the first word (the hash)
-        dataset_hash = raw_text.split('md5:')[1].split()[0].strip()
+        dvc_info = yaml.safe_load(file)
+        dataset_hash = dvc_info['outs'][0]['md5']
 
     # Log everything to MLflow in ONE unified run
     mlflow.set_experiment(cfg.mlflow.experiment_name)

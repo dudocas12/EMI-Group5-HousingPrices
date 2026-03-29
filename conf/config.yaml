@@ -1,4 +1,4 @@
-# MLOps Pipeline Configuration - Group 5
+# MLOps Pipeline Configuration
 
 paths:
   raw_baseline: "data/raw/baseline.csv"
@@ -7,7 +7,11 @@ paths:
   test_data: "data/processed/test.csv"
   model_dir: "models"
   model_path: "models/random_forest.pkl"
-  
+  future_batches: "data/raw/future_batches.csv"
+  cursor: "data/raw/sim_cursor.txt"
+
+mock_api:
+  update_frequency_days: 1
 
 mlflow:
   experiment_name: "Housing_Prices_Baseline"
