@@ -58,10 +58,14 @@ def evaluate_model(cfg: DictConfig):
         mlflow.log_metric("mae", mae)
         mlflow.log_metric("r2", r2)
         
-        # 4. Model Artifact
-        mlflow.sklearn.log_model(model, "random_forest_model")
+        # 4. Model Artifact & Registry
+        mlflow.sklearn.log_model(
+            sk_model=model, 
+            artifact_path="random_forest_model",
+            registered_model_name="KingCounty_RandomForest"
+        )
         
-        print(f"Successfully logged unified run to MLflow! (Hash: {dataset_hash})")
+        print(f"Successfully logged unified run to MLflow (Hash: {dataset_hash})")
 
 if __name__ == "__main__":
     evaluate_model()
