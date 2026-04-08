@@ -84,5 +84,32 @@ services:
         condition: service_completed_successfully
     command: airflow dag-processor
 
+  fastapi:
+    build: .
+    container_name: fastapi_server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/opt/airflow/src
+      - ./mlflow_data:/mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow_server:5000
+    depends_on:
+      - mlflow_server
+    entrypoint: []
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000
+
+  streamlit:
+    build: .
+    container_name: streamlit_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./src:/opt/airflow/src
+    depends_on:
+      - fastapi
+    entrypoint: []
+    command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+
 volumes:
   emi-postgres_data:
