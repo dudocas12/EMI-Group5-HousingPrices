@@ -4,23 +4,38 @@ import mlflow.pyfunc
 import pandas as pd
 import os
 import datetime
+import time
 
-# Set MLflow tracking URI so the API knows where to find the registry
 os.environ["MLFLOW_TRACKING_URI"] = "http://mlflow_server:5000"
 
 app = FastAPI(title="King County Housing Prices API")
 
-# Load the latest registered model from MLflow
-MODEL_NAME = "KingCounty_RandomForest"
-print(f"Loading latest version of {MODEL_NAME} from MLflow...")
-try:
-    model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/latest")
-except Exception as e:
-    print(f"Error loading model: {e}")
-    model = None
+MODEL_NAME = "KingCounty_Champion"
+
+# The Resilience Loop
+def load_model_with_retry(max_retries=5, delay_seconds=10):
+    """Attempts to load the model multiple times before giving up."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Attempt {attempt}/{max_retries}: Loading latest version of {MODEL_NAME}...")
+            loaded_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/latest")
+            print("Model loaded successfully!")
+            return loaded_model
+        except Exception as e:
+            print(f"Failed to load model: {e}")
+            if attempt < max_retries:
+                print(f"Retrying in {delay_seconds} seconds...")
+                time.sleep(delay_seconds)
+            else:
+                print("Max retries reached. API will boot, but predictions are disabled.")
+                return None
+
+# Execute the loop when the API starts
+model = load_model_with_retry()
 
 current_year = datetime.datetime.now().year
-# The "Bouncer": Enforcing strict data types for incoming prediction requests
+
+# The Bouncer: Enforcing strict data types for incoming prediction requests
 class HousingInput(BaseModel):
     bedrooms: int = Field(ge=0, description="Cannot have negative bedrooms")
     bathrooms: float = Field(ge=0.0, description="Cannot have negative bathrooms")
@@ -47,8 +62,19 @@ def health_check():
 
 @app.post("/predict")
 def predict_price(data: HousingInput):
+    global model
+    # The Safety Net
     if model is None:
-        raise HTTPException(status_code=500, detail="Model is not loaded.")
+        print("Model is missing. Attempting a quick reload...")
+        # Try one last time to grab it dynamically
+        model = load_model_with_retry(max_retries=1)
+        
+        # If it is still missing, return a polite 503 instead of a fatal 500
+        if model is None:
+            raise HTTPException(
+                status_code=503, 
+                detail="The model is currently training or initializing. Please try again in a few seconds."
+            )
     
     try:
         # Convert the strictly validated Pydantic object into a pandas DataFrame
@@ -56,7 +82,7 @@ def predict_price(data: HousingInput):
         prediction = model.predict(df)
         
         return {
-            "predicted_price": float(prediction),
+            "predicted_price": float(prediction if isinstance(prediction, (list, pd.Series, pd.DataFrame)) else prediction),
             "model_version": "latest"
         }
     except Exception as e:

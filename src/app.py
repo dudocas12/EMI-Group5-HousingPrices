@@ -41,7 +41,7 @@ with col3:
     floors = st.number_input("Floors", min_value=1.0, value=1.0, step=0.5)
     
     # FIXED: Added the '0' back to options so users can say 'No'
-    waterfront = st.selectbox("Waterfront", options=[1], format_func=lambda x: "Yes" if x == 1 else "No")
+    waterfront = st.selectbox("Waterfront", options=[0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
     
     # Changed to strict integers
     grade = st.number_input("Grade (1-13)", min_value=1, max_value=13, value=7, step=1)
