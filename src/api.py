@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import mlflow.pyfunc
+from mlflow.tracking import MlflowClient
 import pandas as pd
 import os
 import datetime
@@ -12,25 +13,34 @@ app = FastAPI(title="King County Housing Prices API")
 
 MODEL_NAME = "KingCounty_Champion"
 
+# Global variables to store our tournament metadata
+champion_algo = "Unknown"
+champion_rmse = 0.0
 # The Resilience Loop
 def load_model_with_retry(max_retries=5, delay_seconds=10):
-    """Attempts to load the model multiple times before giving up."""
+    global champion_algo, champion_rmse
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"Attempt {attempt}/{max_retries}: Loading latest version of {MODEL_NAME}...")
+            print(f"Attempt {attempt}/{max_retries}: Loading {MODEL_NAME}...")
             loaded_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/latest")
-            print("Model loaded successfully!")
+            
+            run_id = loaded_model.metadata.run_id
+            
+            client = MlflowClient()
+            run = client.get_run(run_id)
+            
+            champion_algo = run.data.params.get("champion_algorithm", "Unknown Model")
+            champion_rmse = float(run.data.metrics.get("champion_rmse", 0.0))
+            
+            print(f"Loaded {champion_algo} (RMSE: {champion_rmse})")
             return loaded_model
         except Exception as e:
             print(f"Failed to load model: {e}")
             if attempt < max_retries:
-                print(f"Retrying in {delay_seconds} seconds...")
                 time.sleep(delay_seconds)
             else:
-                print("Max retries reached. API will boot, but predictions are disabled.")
                 return None
 
-# Execute the loop when the API starts
 model = load_model_with_retry()
 
 current_year = datetime.datetime.now().year
@@ -62,28 +72,22 @@ def health_check():
 
 @app.post("/predict")
 def predict_price(data: HousingInput):
-    global model
-    # The Safety Net
+    global model, champion_algo, champion_rmse
+    
     if model is None:
         print("Model is missing. Attempting a quick reload...")
-        # Try one last time to grab it dynamically
         model = load_model_with_retry(max_retries=1)
-        
-        # If it is still missing, return a polite 503 instead of a fatal 500
         if model is None:
-            raise HTTPException(
-                status_code=503, 
-                detail="The model is currently training or initializing. Please try again in a few seconds."
-            )
-    
+            raise HTTPException(status_code=503, detail="The model is currently training. Please try again in a few seconds.")
     try:
-        # Convert the strictly validated Pydantic object into a pandas DataFrame
         df = pd.DataFrame([data.model_dump()])
         prediction = model.predict(df)
         
+        # Now we return the price and the metadata
         return {
             "predicted_price": float(prediction if isinstance(prediction, (list, pd.Series, pd.DataFrame)) else prediction),
-            "model_version": "latest"
+            "model_used": champion_algo,
+            "rmse": champion_rmse
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
