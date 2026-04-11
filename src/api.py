@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-import mlflow.pyfunc
+import mlflow.sklearn
 from mlflow.tracking import MlflowClient
+import shap
 import pandas as pd
+import numpy as np
 import os
 import datetime
 import time
@@ -13,26 +15,56 @@ app = FastAPI(title="King County Housing Prices API")
 
 MODEL_NAME = "KingCounty_Champion"
 
-# Global variables to store our tournament metadata
+# Human-readable labels for each feature (used in the explainability response)
+FEATURE_LABELS = {
+    "bedrooms": "Bedrooms",
+    "bathrooms": "Bathrooms",
+    "sqft_living": "Living Area",
+    "sqft_lot": "Lot Size",
+    "floors": "Floors",
+    "waterfront": "Waterfront Access",
+    "view": "View Quality",
+    "condition": "Property Condition",
+    "grade": "Construction Grade",
+    "sqft_above": "Above-Ground Area",
+    "sqft_basement": "Basement Area",
+    "yr_built": "Year Built",
+    "yr_renovated": "Renovation Status",
+    "zipcode": "Neighborhood (Zip)",
+    "lat": "North-South Location",
+    "long": "East-West Location",
+    "sqft_living15": "Neighbor Home Sizes",
+    "sqft_lot15": "Neighbor Lot Sizes",
+}
+
+# Global state for the loaded model and its explainer
 champion_algo = "Unknown"
 champion_rmse = 0.0
-# The Resilience Loop
+model = None
+explainer = None
+
 def load_model_with_retry(max_retries=5, delay_seconds=10):
-    global champion_algo, champion_rmse
+    """Loads the champion model from MLflow Registry with retry logic for resilience."""
+    global champion_algo, champion_rmse, explainer
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Attempt {attempt}/{max_retries}: Loading {MODEL_NAME}...")
-            loaded_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/latest")
-            
-            run_id = loaded_model.metadata.run_id
-            
+            loaded_model = mlflow.sklearn.load_model(f"models:/{MODEL_NAME}/latest")
+
+            # Retrieve metadata from the MLflow run that produced this model
             client = MlflowClient()
-            run = client.get_run(run_id)
-            
-            champion_algo = run.data.params.get("champion_algorithm", "Unknown Model")
-            champion_rmse = float(run.data.metrics.get("champion_rmse", 0.0))
-            
-            print(f"Loaded {champion_algo} (RMSE: {champion_rmse})")
+            # Get the latest version's run_id
+            versions = client.get_latest_versions(MODEL_NAME)
+            if versions:
+                run_id = versions[0].run_id
+                run = client.get_run(run_id)
+                champion_algo = run.data.params.get("champion_algorithm", "Unknown Model")
+                champion_rmse = float(run.data.metrics.get("champion_rmse", 0.0))
+
+            # Initialize the SHAP explainer for this model
+            explainer = shap.Explainer(loaded_model)
+
+            print(f"Loaded {champion_algo} (RMSE: {champion_rmse}) with SHAP explainer ready.")
             return loaded_model
         except Exception as e:
             print(f"Failed to load model: {e}")
@@ -45,7 +77,7 @@ model = load_model_with_retry()
 
 current_year = datetime.datetime.now().year
 
-# The Bouncer: Enforcing strict data types for incoming prediction requests
+# Input validation schema with King County-specific constraints
 class HousingInput(BaseModel):
     bedrooms: int = Field(ge=0, description="Cannot have negative bedrooms")
     bathrooms: float = Field(ge=0.0, description="Cannot have negative bathrooms")
@@ -72,22 +104,48 @@ def health_check():
 
 @app.post("/predict")
 def predict_price(data: HousingInput):
-    global model, champion_algo, champion_rmse
-    
+    global model, champion_algo, champion_rmse, explainer
+
     if model is None:
-        print("Model is missing. Attempting a quick reload...")
+        print("Model is missing. Attempting reload...")
         model = load_model_with_retry(max_retries=1)
         if model is None:
             raise HTTPException(status_code=503, detail="The model is currently training. Please try again in a few seconds.")
     try:
         df = pd.DataFrame([data.model_dump()])
         prediction = model.predict(df)
-        
-        # Now we return the price and the metadata
+        predicted_price = float(prediction[0]) if hasattr(prediction, '__iter__') else float(prediction)
+
+        # Compute SHAP values for explainability
+        feature_contributions = []
+        if explainer is not None:
+            try:
+                shap_values = explainer(df)
+                values = shap_values.values[0]
+                base_value = float(shap_values.base_values[0])
+                feature_names = df.columns.tolist()
+
+                for i, fname in enumerate(feature_names):
+                    feature_contributions.append({
+                        "feature": fname,
+                        "label": FEATURE_LABELS.get(fname, fname),
+                        "impact": round(float(values[i]), 2),
+                    })
+
+                # Sort by absolute impact (biggest drivers first)
+                feature_contributions.sort(key=lambda x: abs(x["impact"]), reverse=True)
+            except Exception as e:
+                print(f"SHAP computation failed (non-fatal): {e}")
+                base_value = predicted_price
+        else:
+            base_value = predicted_price
+
         return {
-            "predicted_price": float(prediction if isinstance(prediction, (list, pd.Series, pd.DataFrame)) else prediction),
+            "predicted_price": predicted_price,
             "model_used": champion_algo,
-            "rmse": champion_rmse
+            "rmse": champion_rmse,
+            "base_value": round(base_value, 2),
+            "feature_contributions": feature_contributions,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

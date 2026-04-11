@@ -3,20 +3,19 @@ import requests
 from datetime import datetime
 import folium
 from streamlit_folium import st_folium
+import pandas as pd
 
 API_URL = "http://fastapi:8000/predict"
 CURRENT_YEAR = datetime.now().year
 
 st.set_page_config(page_title="King County Predictor", page_icon="🏡", layout="wide")
 
-# --- CACHED DATA FETCHING (For the Map Outline) ---
 @st.cache_data
 def get_king_county_geojson():
     """Fetches the official King County boundary so non-locals know where to click."""
     url = "https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json"
     try:
         data = requests.get(url).json()
-        # Filter the massive US dataset for ONLY Washington (53) and King County (033)
         king_county = [f for f in data["features"] if f["id"] == "53033"]
         if king_county:
             return {"type": "FeatureCollection", "features": king_county}
@@ -24,28 +23,26 @@ def get_king_county_geojson():
         print(f"Could not load county boundaries: {e}")
     return None
 
-# Initialize session state for memory and notifications
+# Initialize session state
 if "prediction_data" not in st.session_state:
     st.session_state.prediction_data = None
 if "show_success_toast" not in st.session_state:
     st.session_state.show_success_toast = False
 
-# Trigger the sleek notification if a prediction just finished
 if st.session_state.show_success_toast:
-    st.toast("🎉 Valuation complete! The dashboard has been updated.", icon="✅")
-    st.session_state.show_success_toast = False # Reset it so it doesn't spam the user
+    st.toast("Valuation complete! The dashboard has been updated.", icon="✅")
+    st.session_state.show_success_toast = False
 
 # --- HEADER ---
-st.title("🏡 King County Housing Price Predictor")
+st.title("King County Housing Price Predictor")
 st.markdown("Enter property details below and let our machine learning pipeline estimate the fair market value.")
 st.divider()
 
-# --- TOP ROW: DASHBOARD ---
+# --- TOP ROW: MAP + VALUATION ---
 top_col1, top_col2 = st.columns([1.5, 1])
 
 with top_col1:
-    st.subheader("📍 Location")
-    # Tweak 1: Brought back the manual coordinate toggle
+    st.subheader("Location")
     location_mode = st.radio("Entry Method:", ["Interactive Map", "Manual Entry"], horizontal=True)
     
     if location_mode == "Interactive Map":
@@ -55,7 +52,6 @@ with top_col1:
         m = folium.Map(location=[47.5112, -122.257], zoom_start=10, min_zoom=9, max_bounds=True)
         m.fit_bounds([south_west, north_east])
         
-        # Tweak 3: Draw the King County Boundary on the map
         boundary_data = get_king_county_geojson()
         if boundary_data:
             folium.GeoJson(
@@ -83,10 +79,10 @@ with top_col1:
             long = st.number_input("Longitude", value=-122.257, format="%.4f")
 
 with top_col2:
-    st.subheader("📊 Valuation")
+    st.subheader("Valuation")
     with st.container(border=True):
         if st.session_state.prediction_data is None:
-            st.info("👈 Select a location and fill out the details below to generate a valuation.")
+            st.info("Select a location and fill out the details below to generate a valuation.")
             st.write("\n" * 6)
         else:
             data = st.session_state.prediction_data
@@ -100,17 +96,72 @@ with top_col2:
             if show_interval:
                 lower_bound = max(0, price - rmse)
                 upper_bound = price + rmse
-                st.markdown(f"**Expected Range:**\n\n `${lower_bound:,.0f}` — `${upper_bound:,.0f}`")
+                ci_col1, ci_col2 = st.columns(2)
+                with ci_col1:
+                    st.metric(label="Low Estimate", value=f"${lower_bound:,.0f}")
+                with ci_col2:
+                    st.metric(label="High Estimate", value=f"${upper_bound:,.0f}")
             
             st.divider()
-            st.caption(f"⚙️ **Engine:** {model_used}")
+            st.caption(f"**Engine:** {model_used}")
             if show_interval:
-                st.caption(f"📉 **Model Error Margin (RMSE):** ±${rmse:,.0f}")
+                st.caption(f"**Error Margin (RMSE):** ±${rmse:,.0f}")
+
+# --- XAI SECTION (right below valuation, before property details) ---
+if st.session_state.prediction_data is not None:
+    contributions = st.session_state.prediction_data.get("feature_contributions", [])
+    base_value = st.session_state.prediction_data.get("base_value", 0)
+    
+    significant = [c for c in contributions if abs(c["impact"]) > 100]
+    
+    if significant:
+        st.write("")
+        st.subheader("What's Driving This Price?")
+        st.caption(
+            f"The average home in King County is valued at **${base_value:,.0f}**. "
+            "The chart below shows how each feature of this specific property shifts the price above or below that average."
+        )
+        
+        # Build a clean horizontal bar chart
+        chart_data = []
+        for c in significant[:10]:
+            chart_data.append({
+                "Feature": c["label"],
+                "Impact ($)": c["impact"],
+            })
+        
+        df_chart = pd.DataFrame(chart_data)
+        
+        # Use Streamlit's native bar chart with color coding
+        st.bar_chart(
+            df_chart,
+            x="Feature",
+            y="Impact ($)",
+            color=None,
+            horizontal=True,
+            use_container_width=True,
+        )
+        
+        # Detailed breakdown table inside an expander for users who want more
+        with st.expander("View Detailed Breakdown"):
+            for c in significant:
+                impact = c["impact"]
+                label = c["label"]
+                if impact > 0:
+                    st.markdown(f"**{label}** — adds **+${impact:,.0f}** to the price")
+                else:
+                    st.markdown(f"**{label}** — reduces the price by **${abs(impact):,.0f}**")
+            
+            st.caption(
+                f"_These values are calculated using SHAP (SHapley Additive exPlanations), "
+                f"a method that measures each feature's individual contribution to the final prediction._"
+            )
 
 st.write("")
+st.divider()
 
-# --- BOTTOM ROW: PROPERTY DETAILS ---
-st.subheader("🏠 Property Details")
+# --- PROPERTY DETAILS ---
+st.subheader("Property Details")
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -146,7 +197,6 @@ with st.expander("Advanced Features (Views & Neighbors)"):
         sqft_living15 = st.number_input("Avg Neighbor Living Area", min_value=1, value=1800, step=100)
         sqft_lot15 = st.number_input("Avg Neighbor Lot Size", min_value=1, value=5000, step=100)
 
-# --- THE BIG BUTTON ---
 st.write("")
 if st.button("Generate Valuation", type="primary", use_container_width=True):
     payload = {
@@ -164,7 +214,6 @@ if st.button("Generate Valuation", type="primary", use_container_width=True):
             response.raise_for_status()
             st.session_state.prediction_data = response.json()
             
-            # Tweak 2: Trigger the toast and instantly scroll to the top
             st.session_state.show_success_toast = True
             st.rerun() 
             
