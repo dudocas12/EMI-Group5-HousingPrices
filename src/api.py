@@ -4,6 +4,8 @@ import mlflow.sklearn
 from mlflow.tracking import MlflowClient
 import shap
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 import numpy as np
 import os
 import datetime
@@ -42,10 +44,11 @@ champion_algo = "Unknown"
 champion_rmse = 0.0
 model = None
 explainer = None
+background_data = None
 
 def load_model_with_retry(max_retries=5, delay_seconds=10):
     """Loads the champion model from MLflow Registry with retry logic for resilience."""
-    global champion_algo, champion_rmse, explainer
+    global champion_algo, champion_rmse, explainer, background_data
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Attempt {attempt}/{max_retries}: Loading {MODEL_NAME}...")
@@ -61,10 +64,24 @@ def load_model_with_retry(max_retries=5, delay_seconds=10):
                 champion_algo = run.data.params.get("champion_algorithm", "Unknown Model")
                 champion_rmse = float(run.data.metrics.get("champion_rmse", 0.0))
 
-            # Initialize the SHAP explainer for this model
-            explainer = shap.Explainer(loaded_model)
+            print(f"Loaded {champion_algo} (RMSE: {champion_rmse})")
 
-            print(f"Loaded {champion_algo} (RMSE: {champion_rmse}) with SHAP explainer ready.")
+            # Check if the model supports SHAP TreeExplainer
+            if hasattr(loaded_model, 'estimators_') or hasattr(loaded_model, 'get_booster'):
+                explainer = "tree"
+                # Load a sample of training data as SHAP background reference
+                try:
+                    train_df = pd.read_csv("/opt/airflow/data/processed/train.csv")
+                    background_data = train_df.drop(columns=['price']).sample(n=100, random_state=42)
+                    print(f"SHAP TreeExplainer ready with {len(background_data)} background samples.")
+                except Exception as bg_err:
+                    background_data = None
+                    explainer = None
+                    print(f"Could not load training data for SHAP: {bg_err}")
+            else:
+                explainer = None
+                print("SHAP not available for this model type.")
+
             return loaded_model
         except Exception as e:
             print(f"Failed to load model: {e}")
@@ -118,9 +135,10 @@ def predict_price(data: HousingInput):
 
         # Compute SHAP values for explainability
         feature_contributions = []
-        if explainer is not None:
+        if explainer == "tree" and background_data is not None:
             try:
-                shap_values = explainer(df)
+                shap_explainer = shap.Explainer(model.predict, background_data)
+                shap_values = shap_explainer(df)
                 values = shap_values.values[0]
                 base_value = float(shap_values.base_values[0])
                 feature_names = df.columns.tolist()
@@ -132,7 +150,6 @@ def predict_price(data: HousingInput):
                         "impact": round(float(values[i]), 2),
                     })
 
-                # Sort by absolute impact (biggest drivers first)
                 feature_contributions.sort(key=lambda x: abs(x["impact"]), reverse=True)
             except Exception as e:
                 print(f"SHAP computation failed (non-fatal): {e}")

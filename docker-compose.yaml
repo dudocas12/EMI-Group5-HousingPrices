@@ -92,6 +92,7 @@ services:
     volumes:
       - ./src:/opt/airflow/src
       - ./mlflow_data:/mlflow
+      - ./data:/opt/airflow/data
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow_server:5000
     depends_on:

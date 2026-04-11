@@ -1,3 +1,7 @@
+"""
+Runs a tournament between all trained models, selects the champion based on RMSE,
+and registers the winning model in the MLflow Model Registry.
+"""
 import pandas as pd
 import os
 import joblib
@@ -10,9 +14,8 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 @hydra.main(config_path="../conf", config_name="config", version_base=None)
 def evaluate_models(cfg: DictConfig):
-    # Load paths from Hydra
     test_path = cfg.paths.test_data
-    model_dir = cfg.paths.model_dir  
+    model_dir = cfg.paths.model_dir
     dvc_path = cfg.paths.dvc_tracker
     
     print(f"Loading test data from {test_path}...")
@@ -20,74 +23,69 @@ def evaluate_models(cfg: DictConfig):
     X_test = df_test.drop(columns=['price'])
     y_test = df_test['price']
 
+    # Load all contenders
     print(f"Loading trained models from {model_dir}...")
-    rf_model = joblib.load(os.path.join(model_dir, "rf_model.pkl"))
-    lr_model = joblib.load(os.path.join(model_dir, "lr_model.pkl"))
+    models = {
+        "RandomForest": joblib.load(os.path.join(model_dir, "rf_model.pkl")),
+        "LinearRegression": joblib.load(os.path.join(model_dir, "lr_model.pkl")),
+        "XGBoost": joblib.load(os.path.join(model_dir, "xgb_model.pkl")),
+    }
 
-    # Generate Predictions
-    print("Generating predictions on unseen test data...")
-    rf_predictions = rf_model.predict(X_test)
-    lr_predictions = lr_model.predict(X_test)
+    # Evaluate each model
+    results = {}
+    for name, model in models.items():
+        predictions = model.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(y_test, predictions))
+        mae = mean_absolute_error(y_test, predictions)
+        r2 = r2_score(y_test, predictions)
+        results[name] = {"rmse": rmse, "mae": mae, "r2": r2, "model": model}
+        print(f"  {name:20s} -> RMSE: {rmse:>12,.2f}  MAE: {mae:>12,.2f}  R2: {r2:.4f}")
 
-    # Calculate Performance Metrics (Using RMSE as our primary tournament metric)
-    rf_rmse = np.sqrt(mean_squared_error(y_test, rf_predictions))
-    lr_rmse = np.sqrt(mean_squared_error(y_test, lr_predictions))
+    # Determine the champion
+    champion_name = min(results, key=lambda k: results[k]["rmse"])
+    champion = results[champion_name]
+    print(f"\nChampion: {champion_name} (RMSE: {champion['rmse']:,.2f})")
 
-    print("\n Tournament Results \n")
-    print(f"Random Forest RMSE:     {rf_rmse:.2f}")
-    print(f"Linear Regression RMSE: {lr_rmse:.2f}\n")
-
-    # Extract the DVC MD5 hash for strict data lineage tracking
+    # Extract DVC hash for data lineage
     with open(dvc_path, 'r') as file:
         dvc_info = yaml.safe_load(file)
         dataset_hash = dvc_info['outs'][0]['md5']
 
-    # Log everything to MLflow in ONE unified run
+    # Log everything to MLflow
     mlflow.set_experiment(cfg.mlflow.experiment_name)
     
     with mlflow.start_run():
-        # Strict Data Lineage
+        # Data lineage
         mlflow.set_tag("dvc_md5_hash", dataset_hash)
         
-        # Log Hyperparameters (Random Forest)
-        mlflow.log_param("n_estimators", cfg.training.n_estimators)
-        mlflow.log_param("max_depth", cfg.training.max_depth)
+        # Log all hyperparameters
+        mlflow.log_param("rf_n_estimators", cfg.training.random_forest.n_estimators)
+        mlflow.log_param("rf_max_depth", cfg.training.random_forest.max_depth)
+        mlflow.log_param("xgb_n_estimators", cfg.training.xgboost.n_estimators)
+        mlflow.log_param("xgb_max_depth", cfg.training.xgboost.max_depth)
+        mlflow.log_param("xgb_learning_rate", cfg.training.xgboost.learning_rate)
         mlflow.log_param("random_state", cfg.training.random_state)
 
-        # Log both metrics so you can compare them in the UI
-        mlflow.log_metric("rf_rmse", rf_rmse)
-        mlflow.log_metric("lr_rmse", lr_rmse)
-        
-        # --- THE SHOWDOWN ---
-        if rf_rmse < lr_rmse:
-            print("Random Forest wins! Registering as Champion...")
-            best_model = rf_model
-            champion_name = "RandomForest"
-            champion_rmse = rf_rmse
-            champion_mae = mean_absolute_error(y_test, rf_predictions)
-            champion_r2 = r2_score(y_test, rf_predictions)
-        else:
-            print("Linear Regression wins! Registering as Champion...")
-            best_model = lr_model
-            champion_name = "LinearRegression"
-            champion_rmse = lr_rmse
-            champion_mae = mean_absolute_error(y_test, lr_predictions)
-            champion_r2 = r2_score(y_test, lr_predictions)
+        # Log RMSE for every contender (visible in MLflow comparison charts)
+        for name, res in results.items():
+            mlflow.log_metric(f"{name}_rmse", res["rmse"])
+            mlflow.log_metric(f"{name}_mae", res["mae"])
+            mlflow.log_metric(f"{name}_r2", res["r2"])
 
-        # Log the winner's identity and final stats
+        # Log the champion's identity and final stats
         mlflow.log_param("champion_algorithm", champion_name)
-        mlflow.log_metric("champion_rmse", champion_rmse)
-        mlflow.log_metric("champion_mae", champion_mae)
-        mlflow.log_metric("champion_r2", champion_r2)
+        mlflow.log_metric("champion_rmse", champion["rmse"])
+        mlflow.log_metric("champion_mae", champion["mae"])
+        mlflow.log_metric("champion_r2", champion["r2"])
         
-        # Model Artifact & Registry (Only the winner gets registered!)
+        # Register only the winner in the Model Registry
         mlflow.sklearn.log_model(
-            sk_model=best_model, 
+            sk_model=champion["model"], 
             artifact_path="champion_model",
-            registered_model_name="KingCounty_Champion"  # This is what FastAPI will look for
+            registered_model_name="KingCounty_Champion"
         )
         
-        print(f"Successfully logged unified run to MLflow (Hash: {dataset_hash})")
+        print(f"Logged unified run to MLflow (Hash: {dataset_hash})")
 
 if __name__ == "__main__":
     evaluate_models()

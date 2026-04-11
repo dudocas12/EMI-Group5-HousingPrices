@@ -6,7 +6,6 @@ paths:
   train_data: "data/processed/train.csv"
   test_data: "data/processed/test.csv"
   model_dir: "models"
-  model_path: "models/random_forest.pkl"
   future_batches: "data/raw/future_batches.csv"
   cursor: "data/raw/sim_cursor.txt"
 
@@ -21,6 +20,11 @@ preprocessing:
   random_state: 42
 
 training:
-  n_estimators: 100
-  max_depth: 10
   random_state: 42
+  random_forest:
+    n_estimators: 100
+    max_depth: 10
+  xgboost:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1

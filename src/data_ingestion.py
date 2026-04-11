@@ -11,7 +11,7 @@ def main(cfg: DictConfig):
     print(f"Loading dataset from {data_path}...")
     df = pd.read_csv(data_path)
     print(f"Dataset loaded successfully with {len(df)} rows and {len(df.columns)} columns.")
-    print("Data ingestion task complete. Passing baton to preprocessing...")
+    print("Data ingestion complete. Ready for preprocessing.")
 
 if __name__ == "__main__":
     main()

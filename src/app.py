@@ -118,8 +118,8 @@ if st.session_state.prediction_data is not None:
         st.write("")
         st.subheader("What's Driving This Price?")
         st.caption(
-            f"The average home in King County is valued at **${base_value:,.0f}**. "
-            "The chart below shows how each feature of this specific property shifts the price above or below that average."
+            f"The model's baseline prediction for a typical King County home is **${base_value:,.0f}**. "
+            "The chart below shows how each feature of this property shifts the predicted price above or below that baseline."
         )
         
         # Build a clean horizontal bar chart
