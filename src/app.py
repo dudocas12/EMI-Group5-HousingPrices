@@ -33,12 +33,12 @@ if st.session_state.show_success_toast:
     st.toast("Valuation complete! The dashboard has been updated.", icon="✅")
     st.session_state.show_success_toast = False
 
-# --- HEADER ---
+# Header
 st.title("King County Housing Price Predictor")
 st.markdown("Enter property details below and let our machine learning pipeline estimate the fair market value.")
 st.divider()
 
-# --- TOP ROW: MAP + VALUATION ---
+# Top Row: Map + Valuation
 top_col1, top_col2 = st.columns([1.5, 1])
 
 with top_col1:
@@ -107,7 +107,7 @@ with top_col2:
             if show_interval:
                 st.caption(f"**Error Margin (RMSE):** ±${rmse:,.0f}")
 
-# --- XAI SECTION (right below valuation, before property details) ---
+# XAI Section
 if st.session_state.prediction_data is not None:
     contributions = st.session_state.prediction_data.get("feature_contributions", [])
     base_value = st.session_state.prediction_data.get("base_value", 0)
@@ -121,8 +121,6 @@ if st.session_state.prediction_data is not None:
             f"The model's baseline prediction for a typical King County home is **${base_value:,.0f}**. "
             "The chart below shows how each feature of this property shifts the predicted price above or below that baseline."
         )
-        
-        # Build a clean horizontal bar chart
         chart_data = []
         for c in significant[:10]:
             chart_data.append({
@@ -132,7 +130,6 @@ if st.session_state.prediction_data is not None:
         
         df_chart = pd.DataFrame(chart_data)
         
-        # Use Streamlit's native bar chart with color coding
         st.bar_chart(
             df_chart,
             x="Feature",
@@ -142,7 +139,6 @@ if st.session_state.prediction_data is not None:
             use_container_width=True,
         )
         
-        # Detailed breakdown table inside an expander for users who want more
         with st.expander("View Detailed Breakdown"):
             for c in significant:
                 impact = c["impact"]
@@ -160,7 +156,7 @@ if st.session_state.prediction_data is not None:
 st.write("")
 st.divider()
 
-# --- PROPERTY DETAILS ---
+# Property Details
 st.subheader("Property Details")
 col1, col2, col3 = st.columns(3)
 

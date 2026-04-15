@@ -23,7 +23,7 @@ def evaluate_models(cfg: DictConfig):
     X_test = df_test.drop(columns=['price'])
     y_test = df_test['price']
 
-    # Load all contenders
+    # Load all models
     print(f"Loading trained models from {model_dir}...")
     models = {
         "RandomForest": joblib.load(os.path.join(model_dir, "rf_model.pkl")),
@@ -39,7 +39,7 @@ def evaluate_models(cfg: DictConfig):
         mae = mean_absolute_error(y_test, predictions)
         r2 = r2_score(y_test, predictions)
         results[name] = {"rmse": rmse, "mae": mae, "r2": r2, "model": model}
-        print(f"  {name:20s} -> RMSE: {rmse:>12,.2f}  MAE: {mae:>12,.2f}  R2: {r2:.4f}")
+        print(f"  {name:20s}: RMSE: {rmse:>12,.2f}  MAE: {mae:>12,.2f}  R2: {r2:.4f}")
 
     # Determine the champion
     champion_name = min(results, key=lambda k: results[k]["rmse"])
@@ -66,7 +66,7 @@ def evaluate_models(cfg: DictConfig):
         mlflow.log_param("xgb_learning_rate", cfg.training.xgboost.learning_rate)
         mlflow.log_param("random_state", cfg.training.random_state)
 
-        # Log RMSE for every contender (visible in MLflow comparison charts)
+        # Log RMSE for every model
         for name, res in results.items():
             mlflow.log_metric(f"{name}_rmse", res["rmse"])
             mlflow.log_metric(f"{name}_mae", res["mae"])
