@@ -1,3 +1,8 @@
+"""
+Data Preprocessing Module.
+Cleans the raw dataset, removes unnecessary columns, and splits
+the data into training and testing sets based on Hydra configuration.
+"""
 import pandas as pd
 import os
 from sklearn.model_selection import train_test_split

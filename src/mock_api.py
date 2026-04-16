@@ -1,3 +1,8 @@
+"""
+Mock API Module.
+Simulates an external data source by releasing new housing records from a pool
+of future batches on a configurable schedule, appending them to the baseline dataset.
+"""
 import pandas as pd
 import os
 from datetime import timedelta

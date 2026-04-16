@@ -1,3 +1,8 @@
+"""
+Streamlit Frontend for King County Housing Price Prediction.
+Provides an interactive map, property input form, valuation dashboard,
+and SHAP-powered feature impact visualization.
+"""
 import streamlit as st
 import requests
 from datetime import datetime
@@ -38,7 +43,7 @@ st.title("King County Housing Price Predictor")
 st.markdown("Enter property details below and let our machine learning pipeline estimate the fair market value.")
 st.divider()
 
-# Top Row: Map + Valuation
+# Top Row: Map and Valuation
 top_col1, top_col2 = st.columns([1.5, 1])
 
 with top_col1:

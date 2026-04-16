@@ -1,3 +1,8 @@
+"""
+FastAPI Serving Layer for King County Housing Price Prediction.
+Loads the champion model from the MLflow Model Registry, exposes a /predict
+endpoint with Pydantic validation, and computes SHAP feature contributions.
+"""
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import mlflow.sklearn

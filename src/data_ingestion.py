@@ -1,3 +1,8 @@
+"""
+Data Ingestion Module.
+Validates the raw dataset by loading it and confirming its structure.
+Serves as the first step in the Airflow reactive training pipeline.
+"""
 import pandas as pd
 import hydra
 from omegaconf import DictConfig

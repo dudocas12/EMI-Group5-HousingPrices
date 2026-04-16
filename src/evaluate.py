@@ -1,6 +1,7 @@
 """
-Runs a tournament between all trained models, selects the champion based on RMSE,
-and registers the winning model in the MLflow Model Registry.
+Model Evaluation Module.
+Evaluates all trained models, selects the best performer based on RMSE,
+and registers it in the MLflow Model Registry.
 """
 import pandas as pd
 import os
@@ -66,7 +67,7 @@ def evaluate_models(cfg: DictConfig):
         mlflow.log_param("xgb_learning_rate", cfg.training.xgboost.learning_rate)
         mlflow.log_param("random_state", cfg.training.random_state)
 
-        # Log RMSE for every model
+        # Log metrics for every model (visible in MLflow comparison charts)
         for name, res in results.items():
             mlflow.log_metric(f"{name}_rmse", res["rmse"])
             mlflow.log_metric(f"{name}_mae", res["mae"])
@@ -78,7 +79,7 @@ def evaluate_models(cfg: DictConfig):
         mlflow.log_metric("champion_mae", champion["mae"])
         mlflow.log_metric("champion_r2", champion["r2"])
         
-        # Register only the winner in the Model Registry
+        # Register the best model in the Model Registry
         mlflow.sklearn.log_model(
             sk_model=champion["model"], 
             artifact_path="champion_model",

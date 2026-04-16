@@ -1,6 +1,7 @@
 """
+Model Training Module.
 Trains three competing models (Random Forest, Linear Regression, XGBoost)
-and saves them for the evaluation tournament.
+and saves them for the evaluation phase.
 """
 import pandas as pd
 import os
@@ -55,7 +56,7 @@ def train_models(cfg: DictConfig):
     joblib.dump(xgb_model, os.path.join(cfg.paths.model_dir, "xgb_model.pkl"))
     print("XGBoost saved.")
 
-    print("All tournament contenders are ready for evaluation.")
+    print("All models trained successfully.")
 
 if __name__ == "__main__":
     train_models()
