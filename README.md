@@ -44,6 +44,8 @@ The training step trains three competing models (Random Forest, Linear Regressio
 
 ### 1. Launch the Infrastructure
 ```bash
+git init
+dvc init
 docker compose up --build -d
 ```
 This starts 7 services:

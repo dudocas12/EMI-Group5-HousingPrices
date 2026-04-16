@@ -209,6 +209,7 @@ mlflow.db
 /models
 
 EMI-Group5-Tutorial1.rar
+EMI-5_FinalProject.rar
 # Ignore MLflow tracking directory
 mlruns/
 
